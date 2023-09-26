@@ -353,7 +353,7 @@ fn write_simplified_traceroute_to_json(
     //geo-location
     let runtime = tokio::runtime::Runtime::new()?;
     let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
-    let src_country = runtime.block_on(get_country_code(&src_addr.ok_or(format!("Failed to get source address for traceroute: {:?}", traceroute))?.to_string(), IpSource::IpInfo))?;
+    let src_country = runtime.block_on(get_country_code(&src_addr.ok_or_else(|| format!("Failed to get source address: {:?}", src_addr))?.to_string(), IpSource::IpInfo))?;
 
     //let src_country = runtime.block_on(get_country_code(&src_addr.ok_or("Failed to get source address")?.to_string(), IpSource::IpInfo))?;
 
