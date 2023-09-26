@@ -352,7 +352,18 @@ fn write_simplified_traceroute_to_json(
 
     //geo-location
     let runtime = tokio::runtime::Runtime::new()?;
-    let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
+   // let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
+
+   let from_country = match from_addr {
+    Some(from_addr) => {
+        match runtime.block_on(get_country_code(&from_addr.to_string(), IpSource::IpInfo)) {
+            Ok(country) => country,
+            Err(_) => "--".to_string(),
+        }
+    }
+    None => "--".to_string(),
+};
+
     let src_country = match src_addr {
         Some(src_addr) => {
             match runtime.block_on(get_country_code(&src_addr.to_string(), IpSource::IpInfo)) {
