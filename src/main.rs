@@ -33,7 +33,7 @@ use json_parser::formats::atlas::AtlasReader;
 
 use std::error::Error;
 //use utils::empty_string_as_none;
-
+#[derive(Debug)]
 struct SimplifiedTraceroute {
     dst_addr: Option<IpAddr>,
     from: Option<String>,
