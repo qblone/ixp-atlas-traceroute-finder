@@ -17,6 +17,7 @@ use serde_json::json;
 use ip_network_table::IpNetworkTable;
 use ip_network::IpNetwork;
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use reqwest;
 use serde::Deserialize;
@@ -27,7 +28,7 @@ use tokio::time::{sleep, Duration};
 
 use chrono::{DateTime, Utc};
 //use model::{AtlasTraceroute, AtlasTracerouteHop, AtlasTracerouteReply};
-use std::net::IpAddr;
+//use std::net::IpAddr;
 use json_parser::formats::atlas::AtlasReader;
 
 
@@ -78,8 +79,7 @@ struct IXP {
     region: String,
 }
 
-
-enum IpSource {
+/*enum IpSource {
     IpMap,  // Note the name change to match the function
     IpInfo,
 }
@@ -88,7 +88,20 @@ async fn get_country_code_from_ipmap(ip: &str) -> Result<String, reqwest::Error>
     let ipmap_url = format!("https://ipmap-api.ripe.net/v1/locate/{}/best", ip);
     let response: Geolocation = reqwest::get(&ipmap_url).await?.json().await?;
     Ok(response.location.country_code_alpha2.unwrap_or("".to_string()))
+}*/
+
+// Define a struct to store prefix and country code
+struct PrefixCountry {
+    prefix: String,
+    country_code: String,
 }
+
+// Define a struct to store IPv4 and IPv6 lookup tables
+struct GeolocationLookup {
+    ipv4_table: Vec<PrefixCountry>,
+    ipv6_table: Vec<PrefixCountry>,
+}
+
 
 fn load_ixp_prefixes_from_csv(filename: &str) -> io::Result<HashSet<IpNetwork>> {
     let mut rdr = ReaderBuilder::new().from_path(filename)?;
@@ -101,8 +114,71 @@ fn load_ixp_prefixes_from_csv(filename: &str) -> io::Result<HashSet<IpNetwork>> 
     }
 
     Ok(prefixes)
+    
 }
 
+impl GeolocationLookup {
+    // Create a new instance of GeolocationLookup and populate it from a CSV file
+    fn from_csv_file(file_path: &str) -> Result<Self, Box<dyn Error>> {
+        let mut ipv4_table = Vec::new();
+        let mut ipv6_table = Vec::new();
+
+        let file = File::open(file_path)?;
+        let reader = io::BufReader::new(file);
+
+        for line in reader.lines() {
+            let line = line?;
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 7 {
+                let prefix = parts[0].to_string();
+                let prefix_clone = prefix.clone();
+                let country_code = parts[5].to_string();
+                let prefix = parts[0].to_string();
+                let country_code = parts[5].to_string();
+                let prefix_country = PrefixCountry {
+                    prefix,
+                    country_code,
+                };
+                if let Ok(ip) = prefix_clone.parse::<IpAddr>() {
+                    // Now you can use the `prefix` variable here without issues.
+                    if prefix_clone.contains(':') {
+                        ipv6_table.push(prefix_country);
+                    } else {
+                        ipv4_table.push(prefix_country);
+                    }
+                }
+                
+            }
+        }
+
+        Ok(Self {
+            ipv4_table,
+            ipv6_table,
+        })
+    }
+
+    // Lookup function to find the country code based on the IP address
+    fn lookup_country_code(&self, ip: &IpAddr) -> String {
+        let ip_str = ip.to_string();
+        self.longest_prefix_match(&ip_str)
+    }
+
+    // Perform the longest prefix match and return the country code or "--"
+    fn longest_prefix_match(&self, ip: &str) -> String {
+        let mut longest_match = "";
+        let mut country_code = "--".to_string();
+
+        for entry in self.ipv4_table.iter().chain(self.ipv6_table.iter()) {
+            if ip.starts_with(&entry.prefix) && entry.prefix.len() > longest_match.len() {
+                longest_match = &entry.prefix;
+                country_code = entry.country_code.clone();
+            }
+        }
+
+        country_code
+    }
+}
+/* 
 
 async fn get_country_code_from_ipinfo(ip: &str) -> Result<String, reqwest::Error> {
     let ipinfo_url = format!("https://ipinfo.io/{}/country", ip);
@@ -122,19 +198,32 @@ async fn get_country_code_from_ipinfo(ip: &str) -> Result<String, reqwest::Error
         }
         Err(_) => Ok("".to_string()),  // return empty string if there's an error in fetching data
     }
-}
+} */
 
-async fn get_country_code(ip: &str, source: IpSource) -> Result<String, reqwest::Error> {
+/* async fn get_country_code(ip: &str, source: IpSource) -> Result<String, reqwest::Error> {
     sleep(Duration::from_millis(100)).await;  // Introducing a 100ms delay, hopefully won't get blacklisted
 
     match source {
         IpSource::IpMap => get_country_code_from_ipmap(ip).await,
         IpSource::IpInfo => get_country_code_from_ipinfo(ip).await,
     }
-}
+} */
 
 
 fn main() {
+
+    //geo-location 
+    let file_path = "/data/qlone/geolocation-db/geolocations_2023-03-29.csv";
+    // Create a GeolocationLookup instance from the CSV file
+    let geolocation_lookup = match GeolocationLookup::from_csv_file(file_path) {
+        Ok(lookup) => lookup,
+        Err(err) => {
+            eprintln!("Error loading geolocation data: {:?}", err);
+            std::process::exit(1); // Terminate the program with an error code
+        }
+    };
+
+
 
     let table = build_network_table("/data/qlone/topology-measurements/riswhois/riswhoisdump.IPv4").expect("Failed to build network table");
 
@@ -166,7 +255,7 @@ fn main() {
                         for traceroute in traceroutes {
                             let simplified_traceroute: SimplifiedTraceroute = simplify_traceroute(traceroute);
                             //print_simplified_traceroute(simplified_traceroute, &table);
-                            if let Err(err) = write_simplified_traceroute_to_json(simplified_traceroute, &table, &output_file_path) {
+                            if let Err(err) = write_simplified_traceroute_to_json(simplified_traceroute, &table, &output_file_path, &geolocation_lookup) {
                                 eprintln!("Failed to write to JSON: {}", err);
                             }
                         }
@@ -333,6 +422,7 @@ fn write_simplified_traceroute_to_json(
     traceroute: SimplifiedTraceroute,
     table: &IpNetworkTable<String>,
     output_file: &Path,
+    geolocation_lookup: &GeolocationLookup, 
 ) -> Result<(), Box<dyn Error>> {
     
     // Check if the traceroute contains any IXP prefix.
@@ -355,6 +445,17 @@ fn write_simplified_traceroute_to_json(
    // let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
 
    let from_country = match from_addr {
+    Some(from_addr) => geolocation_lookup.lookup_country_code(&from_addr),
+    None => "--".to_string(),
+};
+
+let src_country = match src_addr {
+    Some(src_addr) => geolocation_lookup.lookup_country_code(&src_addr),
+    None => "--".to_string(),
+};
+
+/* 
+   let from_country = match from_addr {
     Some(from_addr) => {
         match runtime.block_on(get_country_code(&from_addr.to_string(), IpSource::IpInfo)) {
             Ok(country) => country,
@@ -372,7 +473,7 @@ fn write_simplified_traceroute_to_json(
             }
         }
         None => "--".to_string(),
-    };
+    }; */
     
     
     //let src_country = runtime.block_on(get_country_code(&src_addr.ok_or("Failed to get source address")?.to_string(), IpSource::IpInfo))?;
@@ -385,14 +486,18 @@ fn write_simplified_traceroute_to_json(
             let search_result = longest_match_lookup(Some(ip), table);
             let ip_str = ip.to_string();
 
-            match runtime.block_on(get_country_code(&ip_str, IpSource::IpInfo)) {
-                Ok(country_code) => {
-                    hop_cc = country_code;
-                }
-                Err(e) => {
-                    println!("Error while getting country code: {}", e);
-                }
+            if let Some(ip) = converted_ip {
+                let hop_cc = geolocation_lookup.lookup_country_code(&ip);
+                // Rest of your code...
+            } else {
+                // Handle the case when `converted_ip` is `None`
+                let hop_cc = "--".to_string(); // Set a default value
+                // Rest of your code...
             }
+            
+           
+            
+
 
             hops.push(json!({
                 "hop_number": hop,
