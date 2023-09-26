@@ -9,6 +9,7 @@ use std::io::{BufRead, BufReader};
 use std::io;
 use std::io::Write;
 use std::path::Path;
+use csv::ReaderBuilder;
 
 use std::fs::OpenOptions;
 use serde_json::json;
@@ -54,7 +55,7 @@ struct SearchResult {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[clap(long, short, action)]
+    #[clap(long, short, action)]    
     add_cc: bool,
 }
 
@@ -69,6 +70,13 @@ struct Location {
     country_code_alpha2: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct IXP {
+    name: String,
+    prefix_v4: String,
+    country: String,
+    region: String,
+}
 
 
 enum IpSource {
@@ -81,6 +89,20 @@ async fn get_country_code_from_ipmap(ip: &str) -> Result<String, reqwest::Error>
     let response: Geolocation = reqwest::get(&ipmap_url).await?.json().await?;
     Ok(response.location.country_code_alpha2.unwrap_or("".to_string()))
 }
+
+fn load_ixp_prefixes_from_csv(filename: &str) -> io::Result<HashSet<IpNetwork>> {
+    let mut rdr = ReaderBuilder::new().from_path(filename)?;
+    let mut prefixes = HashSet::new();
+
+    for result in rdr.deserialize() {
+        let record: IXP = result?;
+        let prefix: IpNetwork = record.prefix_v4.parse().expect("Invalid IP Prefix in CSV");
+        prefixes.insert(prefix);
+    }
+
+    Ok(prefixes)
+}
+
 
 async fn get_country_code_from_ipinfo(ip: &str) -> Result<String, reqwest::Error> {
     let ipinfo_url = format!("https://ipinfo.io/{}/country", ip);
@@ -117,7 +139,7 @@ fn main() {
     let table = build_network_table("/data/qlone/topology-measurements/riswhois/riswhoisdump.IPv4").expect("Failed to build network table");
 
     let directory_path = "/data/qlone/topology-measurements/raw-traceroutes/";
-    let output_directory_path = "/data/qlone/topology-measurements/mapped/";
+    let output_directory_path = "/data/qlone/topology-measurements/ixps/";
     
     // Iterate over each file in the directory
     let directory_entries = std::fs::read_dir(directory_path).expect("Failed to read directory");
@@ -170,6 +192,20 @@ fn parse_traceroutes_file(file_path: &str) -> io::Result<Vec<model::AtlasTracero
     Ok(traceroutes)
 }
 
+fn is_ixp_inpath(traceroute: &SimplifiedTraceroute, table: &IpNetworkTable<String>) -> bool {
+    for (_, from) in &traceroute.unique_pairs {
+        let (converted_ip, _) = convert_to_ip_or_keep_string(from.as_deref());
+        if let Some(ip) = converted_ip {
+            let matched = longest_match_lookup(Some(ip), table);
+            if !matched.network.is_empty() {
+                return true;
+            }
+
+           
+        }
+    }
+    false
+}
 
 
 
@@ -293,61 +329,55 @@ fn longest_match_lookup(ip_addr: Option<IpAddr>, table: &IpNetworkTable<String>)
 
 
 
+fn write_simplified_traceroute_to_json(
+    traceroute: SimplifiedTraceroute,
+    table: &IpNetworkTable<String>,
+    output_file: &Path,
+) -> Result<(), Box<dyn Error>> {
+    
+    // Check if the traceroute contains any IXP prefix.
+    if !is_ixp_inpath(&traceroute, table) {
+        return Ok(());
+    }
 
-
-fn write_simplified_traceroute_to_json(traceroute: SimplifiedTraceroute, table: &IpNetworkTable<String>, output_file: &Path) -> Result<(), Box<dyn Error>> {
     let (dst_addr, _) = convert_to_ip_or_keep_string(None); // since dst_addr is already an IpAddr
     let (from_addr, _) = convert_to_ip_or_keep_string(traceroute.from.as_deref());
-    let (src_addr, _) = convert_to_ip_or_keep_string(None); // since src_addr is already an IpAddr    
+    let (src_addr, _) = convert_to_ip_or_keep_string(None); // since src_addr is already an IpAddr
     let dst_addr_result = longest_match_lookup(dst_addr, table);
 
-
-
-    
     let from_result = longest_match_lookup(from_addr, table);
     let src_addr_result = longest_match_lookup(src_addr, table);
 
     let mut hops = Vec::new();
-    
-    
-    //geo-location 
 
+    //geo-location
     let runtime = tokio::runtime::Runtime::new()?;
-    //let dst_country = runtime.block_on(get_country_code(&dst_addr.ok_or("Failed to get destination address")?.to_string()))?;
     let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
     let src_country = runtime.block_on(get_country_code(&src_addr.ok_or("Failed to get source address")?.to_string(), IpSource::IpInfo))?;
 
-
-    
     for (hop, from) in &traceroute.unique_pairs {
-        let (converted_ip, failed_conversion) = convert_to_ip_or_keep_string(from.as_deref()); 
+        let (converted_ip, failed_conversion) = convert_to_ip_or_keep_string(from.as_deref());
         let mut hop_cc = "".to_string(); // Default value
 
-    
         if let Some(ip) = converted_ip {
             let search_result = longest_match_lookup(Some(ip), table);
-
             let ip_str = ip.to_string();
 
-             // Using match to handle the Result returned by block_on
-             match runtime.block_on(get_country_code(&ip_str, IpSource::IpInfo)) {
+            match runtime.block_on(get_country_code(&ip_str, IpSource::IpInfo)) {
                 Ok(country_code) => {
                     hop_cc = country_code;
-                },
+                }
                 Err(e) => {
                     println!("Error while getting country code: {}", e);
                 }
             }
-
-           //let hop_cc = tokio::runtime::Runtime::new().unwrap().block_on(get_country_code(&ip_str)).unwrap_or("".to_string());
-
 
             hops.push(json!({
                 "hop_number": hop,
                 "ip_addr": search_result.ip_addr,
                 "network": search_result.network,
                 "origin": search_result.origin,
-                "hop_cc":hop_cc,
+                "hop_cc": hop_cc,
             }));
         }
 
@@ -357,11 +387,11 @@ fn write_simplified_traceroute_to_json(traceroute: SimplifiedTraceroute, table: 
                 "ip_addr": failed_ip,
                 "network": "",
                 "origin": "",
-                "hop_cc":hop_cc,
+                "hop_cc": hop_cc,
             }));
         }
     }
-    
+
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -376,7 +406,6 @@ fn write_simplified_traceroute_to_json(traceroute: SimplifiedTraceroute, table: 
             "ip_addr": dst_addr_result.ip_addr,
             "network": dst_addr_result.network,
             "origin": dst_addr_result.origin
-           
         },
         "from": {
             "ip_addr": from_result.ip_addr,
@@ -396,6 +425,7 @@ fn write_simplified_traceroute_to_json(traceroute: SimplifiedTraceroute, table: 
     writeln!(file, "{}", serde_json::to_string(&data)?)?;
     Ok(())
 }
+
 
 
 
