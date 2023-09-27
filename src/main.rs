@@ -102,20 +102,23 @@ struct GeolocationLookup {
     ipv6_table: Vec<PrefixCountry>,
 }
 
+fn load_ixp_prefixes_from_csv(filename: &str, table: &mut IpNetworkTable<String>) -> Result<(), Box<dyn Error>> {
 
-fn load_ixp_prefixes_from_csv(filename: &str) -> io::Result<HashSet<IpNetwork>> {
+
     let mut rdr = ReaderBuilder::new().from_path(filename)?;
-    let mut prefixes = HashSet::new();
+
+    
 
     for result in rdr.deserialize() {
         let record: IXP = result?;
-        let prefix: IpNetwork = record.prefix_v4.parse().expect("Invalid IP Prefix in CSV");
-        prefixes.insert(prefix);
+        let prefix: IpNetwork = record.prefix_v4.parse()?;
+        let ixp_name = record.name.clone();
+        table.insert(prefix,ixp_name);
     }
 
-    Ok(prefixes)
-    
+    Ok(())
 }
+
 
 impl GeolocationLookup {
     // Create a new instance of GeolocationLookup and populate it from a CSV file
@@ -132,14 +135,14 @@ impl GeolocationLookup {
             if parts.len() >= 7 {
                 let prefix = parts[0].to_string();
                 let prefix_clone = prefix.clone();
-                let country_code = parts[5].to_string();
+                //let country_code = parts[5].to_string();
                 let prefix = parts[0].to_string();
                 let country_code = parts[5].to_string();
                 let prefix_country = PrefixCountry {
                     prefix,
                     country_code,
                 };
-                if let Ok(ip) = prefix_clone.parse::<IpAddr>() {
+                if let Ok(_ip) = prefix_clone.parse::<IpAddr>() {
                     // Now you can use the `prefix` variable here without issues.
                     if prefix_clone.contains(':') {
                         ipv6_table.push(prefix_country);
@@ -226,13 +229,18 @@ fn main() {
 
 
     let table = build_network_table("/data/qlone/topology-measurements/riswhois/riswhoisdump.IPv4").expect("Failed to build network table");
+    let mut ixp_table = IpNetworkTable::new();
 
     let directory_path = "/data/qlone/topology-measurements/raw-traceroutes/";
     let output_directory_path = "/data/qlone/topology-measurements/ixps/";
+    let ixp_data = "/data/qlone/topology-measurements/ixp-mappings/ix_caida_peeringdb.csv";
     
     // Iterate over each file in the directory
     let directory_entries = std::fs::read_dir(directory_path).expect("Failed to read directory");
 
+    //load ixp dataset 
+    load_ixp_prefixes_from_csv(ixp_data,  &mut ixp_table).expect("Failed to load IXP prefixes");
+    
     for entry_result in directory_entries {
         if let Ok(entry) = entry_result {
             let file_path = entry.path();
@@ -255,7 +263,7 @@ fn main() {
                         for traceroute in traceroutes {
                             let simplified_traceroute: SimplifiedTraceroute = simplify_traceroute(traceroute);
                             //print_simplified_traceroute(simplified_traceroute, &table);
-                            if let Err(err) = write_simplified_traceroute_to_json(simplified_traceroute, &table, &output_file_path, &geolocation_lookup) {
+                            if let Err(err) = write_simplified_traceroute_to_json(simplified_traceroute, &table, &output_file_path,&ixp_table, &geolocation_lookup) {
                                 eprintln!("Failed to write to JSON: {}", err);
                             }
                         }
@@ -281,22 +289,17 @@ fn parse_traceroutes_file(file_path: &str) -> io::Result<Vec<model::AtlasTracero
     Ok(traceroutes)
 }
 
-fn is_ixp_inpath(traceroute: &SimplifiedTraceroute, table: &IpNetworkTable<String>) -> bool {
+fn is_ixp_inpath(traceroute: &SimplifiedTraceroute, ixp_table: &IpNetworkTable<String>) -> bool {
     for (_, from) in &traceroute.unique_pairs {
         let (converted_ip, _) = convert_to_ip_or_keep_string(from.as_deref());
         if let Some(ip) = converted_ip {
-            let matched = longest_match_lookup(Some(ip), table);
-            if !matched.network.is_empty() {
-                return true;
+            if let Some((_network, _)) =ixp_table.longest_match(ip)  {
+               return true;
             }
-
-           
         }
     }
     false
 }
-
-
 
 
 fn simplify_traceroute(atlas_traceroute: model::AtlasTraceroute) -> SimplifiedTraceroute {
@@ -422,11 +425,12 @@ fn write_simplified_traceroute_to_json(
     traceroute: SimplifiedTraceroute,
     table: &IpNetworkTable<String>,
     output_file: &Path,
+    ixp_table: &IpNetworkTable<String>,
     geolocation_lookup: &GeolocationLookup, 
 ) -> Result<(), Box<dyn Error>> {
     
     // Check if the traceroute contains any IXP prefix.
-    if !is_ixp_inpath(&traceroute, table) {
+    if !is_ixp_inpath(&traceroute, ixp_table) {
         return Ok(());
     }
 
@@ -441,7 +445,7 @@ fn write_simplified_traceroute_to_json(
     let mut hops = Vec::new();
 
     //geo-location
-    let runtime = tokio::runtime::Runtime::new()?;
+   // let runtime = tokio::runtime::Runtime::new()?;
    // let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
 
    let from_country = match from_addr {
@@ -484,14 +488,14 @@ let src_country = match src_addr {
 
         if let Some(ip) = converted_ip {
             let search_result = longest_match_lookup(Some(ip), table);
-            let ip_str = ip.to_string();
+            //let ip_str = ip.to_string();
 
             if let Some(ip) = converted_ip {
-                let hop_cc = geolocation_lookup.lookup_country_code(&ip);
+                hop_cc = geolocation_lookup.lookup_country_code(&ip);
                 // Rest of your code...
             } else {
                 // Handle the case when `converted_ip` is `None`
-                let hop_cc = "--".to_string(); // Set a default value
+                hop_cc = "--".to_string(); // Set a default value
                 // Rest of your code...
             }
             
