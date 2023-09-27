@@ -37,7 +37,7 @@ use std::error::Error;
 #[derive(Debug)]
 struct SimplifiedTraceroute {
     dst_addr: Option<IpAddr>,
-    from: Option<String>,
+    from_addr: Option<String>,
     msm_id: u64,
     prb_id: u64,
     src_addr: Option<IpAddr>,
@@ -317,7 +317,7 @@ fn simplify_traceroute(atlas_traceroute: model::AtlasTraceroute) -> SimplifiedTr
 
     SimplifiedTraceroute {
         dst_addr: atlas_traceroute.dst_addr,
-        from: atlas_traceroute.from,
+        from_addr: atlas_traceroute.from,
         msm_id: atlas_traceroute.msm_id,
         prb_id: atlas_traceroute.prb_id,
         src_addr: atlas_traceroute.src_addr,
@@ -430,23 +430,27 @@ fn write_simplified_traceroute_to_json(
 ) -> Result<(), Box<dyn Error>> {
 
     // adding some debug code 
-    println!("{:?}", traceroute); // Print the traceroute value
-
-    // Exit the program
-    process::exit(0);
+  //  println!("{:?}", traceroute); // Print the traceroute value// Exit the program
+    //process::exit(0);
     
     // Check if the traceroute contains any IXP prefix.
     if !is_ixp_inpath(&traceroute, ixp_table) {
         return Ok(());
     }
 
-    let (dst_addr, _) = convert_to_ip_or_keep_string(None); // since dst_addr is already an IpAddr
-    let (from_addr, _) = convert_to_ip_or_keep_string(traceroute.from.as_deref());
-    let (src_addr, _) = convert_to_ip_or_keep_string(None); // since src_addr is already an IpAddr
-    let dst_addr_result = longest_match_lookup(dst_addr, table);
-
-    let from_result = longest_match_lookup(from_addr, table);
-    let src_addr_result = longest_match_lookup(src_addr, table);
+    let dst_addr = traceroute.dst_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+    let from_addr = traceroute.from_addr;
+    /* let from_addr = match traceroute.from_addr {
+        Some(addr_str) => addr_str.parse::<IpAddr>().unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
+        None => IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), // Default value when None
+    };
+     */
+    let src_addr = traceroute.src_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+    let dst_addr_result = longest_match_lookup(Some(dst_addr), table);
+    //let from_result = longest_match_lookup(from_addr, table);
+    let src_addr_result = longest_match_lookup(Some(src_addr), table);
+    
+    
 
     let mut hops = Vec::new();
 
@@ -454,7 +458,7 @@ fn write_simplified_traceroute_to_json(
    // let runtime = tokio::runtime::Runtime::new()?;
    // let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
 
-   let from_country = match from_addr {
+ /*   let from_country = match from_addr {
     Some(from_addr) => geolocation_lookup.lookup_country_code(&from_addr),
     None => "--".to_string(),
 };
@@ -462,7 +466,7 @@ fn write_simplified_traceroute_to_json(
 let src_country = match src_addr {
     Some(src_addr) => geolocation_lookup.lookup_country_code(&src_addr),
     None => "--".to_string(),
-};
+}; */
 
 /* 
    let from_country = match from_addr {
@@ -545,16 +549,12 @@ let src_country = match src_addr {
             "origin": dst_addr_result.origin
         },
         "from": {
-            "ip_addr": from_result.ip_addr,
-            "network": from_result.network,
-            "origin": from_result.origin,
-            "from_cc": from_country
-        },
+            "from" : from_addr
+       },
         "source": {
             "ip_addr": src_addr_result.ip_addr,
             "network": src_addr_result.network,
             "origin": src_addr_result.origin,
-            "src_cc": src_country
         },
         "hops": hops,
     });
