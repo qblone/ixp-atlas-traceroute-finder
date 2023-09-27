@@ -10,7 +10,7 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use csv::ReaderBuilder;
-
+use std::process;
 use std::fs::OpenOptions;
 use serde_json::json;
 
@@ -428,6 +428,12 @@ fn write_simplified_traceroute_to_json(
     ixp_table: &IpNetworkTable<String>,
     geolocation_lookup: &GeolocationLookup, 
 ) -> Result<(), Box<dyn Error>> {
+
+    // adding some debug code 
+    println!("{:?}", traceroute); // Print the traceroute value
+
+    // Exit the program
+    process::exit(0);
     
     // Check if the traceroute contains any IXP prefix.
     if !is_ixp_inpath(&traceroute, ixp_table) {
@@ -492,11 +498,11 @@ let src_country = match src_addr {
 
             if let Some(ip) = converted_ip {
                 hop_cc = geolocation_lookup.lookup_country_code(&ip);
-                // Rest of your code...
+ 
             } else {
                 // Handle the case when `converted_ip` is `None`
                 hop_cc = "--".to_string(); // Set a default value
-                // Rest of your code...
+               
             }
             
            
@@ -508,7 +514,7 @@ let src_country = match src_addr {
                 "ip_addr": search_result.ip_addr,
                 "network": search_result.network,
                 "origin": search_result.origin,
-                "hop_cc": hop_cc,
+               // "hop_cc": hop_cc,
             }));
         }
 
@@ -518,7 +524,7 @@ let src_country = match src_addr {
                 "ip_addr": failed_ip,
                 "network": "",
                 "origin": "",
-                "hop_cc": hop_cc,
+               // "hop_cc": hop_cc,
             }));
         }
     }
