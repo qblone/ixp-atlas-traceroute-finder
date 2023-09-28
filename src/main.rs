@@ -228,7 +228,6 @@ fn main() {
 
 
 
-    let table = build_network_table("/data/qlone/topology-measurements/riswhois/riswhoisdump.IPv4").expect("Failed to build network table");
     let mut ixp_table = IpNetworkTable::new();
 
     let directory_path = "/data/qlone/topology-measurements/raw-traceroutes/";
@@ -237,6 +236,8 @@ fn main() {
     
     // Iterate over each file in the directory
     let directory_entries = std::fs::read_dir(directory_path).expect("Failed to read directory");
+    let table = build_network_table("/data/qlone/topology-measurements/riswhois/riswhoisdump.IPv4",ixp_data).expect("Failed to build network table");
+
 
     //load ixp dataset 
     load_ixp_prefixes_from_csv(ixp_data,  &mut ixp_table).expect("Failed to load IXP prefixes");
@@ -327,7 +328,7 @@ fn simplify_traceroute(atlas_traceroute: model::AtlasTraceroute) -> SimplifiedTr
 }
 
 
-fn build_network_table(file_path: &str) -> Result<IpNetworkTable<String>, Box<dyn std::error::Error>> {
+fn build_network_table(file_path: &str, ixp_data: &str) -> Result<IpNetworkTable<String>, Box<dyn std::error::Error>> {
     let mut table = IpNetworkTable::new();
     // Read the file line by line and insert network-prefix-origin triples into the table
     let file = File::open(file_path).expect("Failed to open file");
@@ -339,12 +340,28 @@ fn build_network_table(file_path: &str) -> Result<IpNetworkTable<String>, Box<dy
             }
 
             let mut parts = line.split_whitespace();
-            if let (Some(origin_str), Some(prefix_str), _) = (parts.next(), parts.next(), parts.next()) {
+            if let (Some(origin_str), Some(prefix_str), Some(seen_by_str)) = (parts.next(), parts.next(), parts.next(),) {
                 if let Ok(prefix) = prefix_str.parse::<IpNetwork>() {
+                    if let Ok(seen_by) = seen_by_str.parse::<usize>()  {                       
+                         if seen_by < 10 {
+                            continue; // Ignore entries where seen_by is less than 10
+                        }
+                    }
                     table.insert(prefix, origin_str.to_string());
                 }
             }
         }
+    }
+    //Add IXP datasets to it as well 
+    let mut rdr = ReaderBuilder::new().from_path(ixp_data)?;
+
+    
+
+    for result in rdr.deserialize() {
+        let record: IXP = result?;
+        let prefix: IpNetwork = record.prefix_v4.parse()?;
+        let ixp_name = record.name.clone();
+        table.insert(prefix,ixp_name);
     }
 
     Ok(table)
@@ -516,7 +533,7 @@ let src_country = match src_addr {
             hops.push(json!({
                 "hop_number": hop,
                 "ip_addr": search_result.ip_addr,
-                "network": search_result.network,
+                "prefix": search_result.network,
                 "origin": search_result.origin,
                // "hop_cc": hop_cc,
             }));
@@ -526,7 +543,7 @@ let src_country = match src_addr {
             hops.push(json!({
                 "hop_number": hop,
                 "ip_addr": failed_ip,
-                "network": "",
+                "prefix": "",
                 "origin": "",
                // "hop_cc": hop_cc,
             }));
@@ -545,7 +562,7 @@ let src_country = match src_addr {
         "timestamp": traceroute.timestamp,
         "destination": {
             "ip_addr": dst_addr_result.ip_addr,
-            "network": dst_addr_result.network,
+            "prefix": dst_addr_result.network,
             "origin": dst_addr_result.origin
         },
         "from": {
@@ -553,7 +570,7 @@ let src_country = match src_addr {
        },
         "source": {
             "ip_addr": src_addr_result.ip_addr,
-            "network": src_addr_result.network,
+            "prefix": src_addr_result.network,
             "origin": src_addr_result.origin,
         },
         "hops": hops,
