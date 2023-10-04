@@ -9,7 +9,7 @@ pub struct AtlasTraceroute {
     pub dst_addr: Option<IpAddr>,
     pub dst_name: String,
     pub endtime: DateTime<Utc>,
-    pub from: Option<String>,
+    pub from: Option<IpAddr>,
     pub msm_id: u64,
     pub msm_name: String,
     pub paris_id: u16,

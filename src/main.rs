@@ -37,7 +37,7 @@ use std::error::Error;
 #[derive(Debug)]
 struct SimplifiedTraceroute {
     dst_addr: Option<IpAddr>,
-    from_addr: Option<String>,
+    from_addr: Option<IpAddr>,
     msm_id: u64,
     prb_id: u64,
     src_addr: Option<IpAddr>,
@@ -79,7 +79,7 @@ struct IXP {
     region: String,
 }
 
-/*enum IpSource {
+enum IpSource {
     IpMap,  // Note the name change to match the function
     IpInfo,
 }
@@ -88,7 +88,7 @@ async fn get_country_code_from_ipmap(ip: &str) -> Result<String, reqwest::Error>
     let ipmap_url = format!("https://ipmap-api.ripe.net/v1/locate/{}/best", ip);
     let response: Geolocation = reqwest::get(&ipmap_url).await?.json().await?;
     Ok(response.location.country_code_alpha2.unwrap_or("".to_string()))
-}*/
+}
 
 // Define a struct to store prefix and country code
 struct PrefixCountry {
@@ -181,7 +181,7 @@ impl GeolocationLookup {
         country_code
     }
 }
-/* 
+
 
 async fn get_country_code_from_ipinfo(ip: &str) -> Result<String, reqwest::Error> {
     let ipinfo_url = format!("https://ipinfo.io/{}/country", ip);
@@ -201,16 +201,16 @@ async fn get_country_code_from_ipinfo(ip: &str) -> Result<String, reqwest::Error
         }
         Err(_) => Ok("".to_string()),  // return empty string if there's an error in fetching data
     }
-} */
+} 
 
-/* async fn get_country_code(ip: &str, source: IpSource) -> Result<String, reqwest::Error> {
+ async fn get_country_code(ip: &str, source: IpSource) -> Result<String, reqwest::Error> {
     sleep(Duration::from_millis(100)).await;  // Introducing a 100ms delay, hopefully won't get blacklisted
 
     match source {
         IpSource::IpMap => get_country_code_from_ipmap(ip).await,
         IpSource::IpInfo => get_country_code_from_ipinfo(ip).await,
     }
-} */
+} 
 
 
 fn main() {
@@ -455,25 +455,41 @@ fn write_simplified_traceroute_to_json(
         return Ok(());
     }
 
-    let dst_addr = traceroute.dst_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
-    let from_addr = traceroute.from_addr;
+    //let dst_addr = traceroute.dst_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+    //let from_addr = traceroute.from_addr;
+    // let src_addr = traceroute.src_addr;
+// Assuming SimplifiedTraceroute structure definition as before
+let dst_addr = traceroute.dst_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+let from_addr = traceroute.from_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+let src_addr: Option<IpAddr> = traceroute.src_addr.and_then(|ip| Some(ip)).or(None);
+
+    
+    
+    
     /* let from_addr = match traceroute.from_addr {
         Some(addr_str) => addr_str.parse::<IpAddr>().unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
         None => IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), // Default value when None
     };
      */
-    let src_addr = traceroute.src_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+
+     
+
+     //let src_addr = traceroute.src_addr.unwrap_or_else(|| Some(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))));
+
+   // let src_addr = traceroute.src_addr.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
     let dst_addr_result = longest_match_lookup(Some(dst_addr), table);
     //let from_result = longest_match_lookup(from_addr, table);
-    let src_addr_result = longest_match_lookup(Some(src_addr), table);
+   // let src_addr_result = longest_match_lookup(Some(src_addr), table);
+   let src_addr_result = longest_match_lookup(src_addr, table);
+
     
     
 
     let mut hops = Vec::new();
 
     //geo-location
-   // let runtime = tokio::runtime::Runtime::new()?;
-   // let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
+    let runtime = tokio::runtime::Runtime::new()?;
+ //   let from_country = runtime.block_on(get_country_code(&from_addr.ok_or("Failed to get 'from' address")?.to_string(), IpSource::IpInfo))?;
 
  /*   let from_country = match from_addr {
     Some(from_addr) => geolocation_lookup.lookup_country_code(&from_addr),
@@ -485,16 +501,14 @@ let src_country = match src_addr {
     None => "--".to_string(),
 }; */
 
-/* 
-   let from_country = match from_addr {
-    Some(from_addr) => {
-        match runtime.block_on(get_country_code(&from_addr.to_string(), IpSource::IpInfo)) {
-            Ok(country) => country,
-            Err(_) => "--".to_string(),
-        }
-    }
-    None => "--".to_string(),
+
+let from_country = match runtime.block_on(get_country_code(&from_addr.to_string(), IpSource::IpInfo)) {
+    Ok(country) => country,
+    Err(_) => "--".to_string(),
 };
+
+
+
 
     let src_country = match src_addr {
         Some(src_addr) => {
@@ -504,7 +518,7 @@ let src_country = match src_addr {
             }
         }
         None => "--".to_string(),
-    }; */
+    }; 
     
     
     //let src_country = runtime.block_on(get_country_code(&src_addr.ok_or("Failed to get source address")?.to_string(), IpSource::IpInfo))?;
@@ -516,8 +530,17 @@ let src_country = match src_addr {
         if let Some(ip) = converted_ip {
             let search_result = longest_match_lookup(Some(ip), table);
             //let ip_str = ip.to_string();
+            let hop_cc = match converted_ip {
+                Some(converted_ip) => {
+                    match runtime.block_on(get_country_code(&converted_ip.to_string(), IpSource::IpInfo)) {
+                        Ok(country) => country,
+                        Err(_) => "--".to_string(),
+                    }
+                }
+                None => "--".to_string(),
+            }; 
 
-            if let Some(ip) = converted_ip {
+            /* if let Some(ip) = converted_ip {
                 hop_cc = geolocation_lookup.lookup_country_code(&ip);
  
             } else {
@@ -525,7 +548,7 @@ let src_country = match src_addr {
                 hop_cc = "--".to_string(); // Set a default value
                
             }
-            
+             */
            
             
 
@@ -535,7 +558,7 @@ let src_country = match src_addr {
                 "ip_addr": search_result.ip_addr,
                 "prefix": search_result.network,
                 "origin": search_result.origin,
-               // "hop_cc": hop_cc,
+                "hop_cc": hop_cc,
             }));
         }
 
@@ -545,7 +568,7 @@ let src_country = match src_addr {
                 "ip_addr": failed_ip,
                 "prefix": "",
                 "origin": "",
-               // "hop_cc": hop_cc,
+                "hop_cc": hop_cc,
             }));
         }
     }
@@ -572,6 +595,7 @@ let src_country = match src_addr {
             "ip_addr": src_addr_result.ip_addr,
             "prefix": src_addr_result.network,
             "origin": src_addr_result.origin,
+            "src_cc": src_country
         },
         "hops": hops,
     });

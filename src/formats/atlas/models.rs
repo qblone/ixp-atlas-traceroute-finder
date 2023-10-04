@@ -14,7 +14,7 @@ pub struct AtlasTraceroute {
     #[serde(with = "ts_seconds")]
     pub endtime: DateTime<Utc>,
     #[serde(deserialize_with = "empty_string_as_none")]
-    pub from: Option<String>,
+    pub from: Option<IpAddr>,
     pub msm_id: u64,
     pub msm_name: String,
     #[serde(default)]
