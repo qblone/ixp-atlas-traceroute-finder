@@ -1,6 +1,6 @@
-use std::net::IpAddr;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::net::IpAddr;
 //use crate::utils::empty_string_as_none;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -22,14 +22,11 @@ pub struct AtlasTraceroute {
     pub kind: String,
 }
 
-
-
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct AtlasTracerouteHop {
     pub hop: u8,
     pub result: Vec<AtlasTracerouteReply>,
 }
-
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct AtlasTracerouteReply {
@@ -39,7 +36,6 @@ pub struct AtlasTracerouteReply {
     pub ttl: Option<u8>,
     pub icmpext: Option<Vec<AtlasIcmpExt>>,
 }
-
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct AtlasIcmpExt {
@@ -76,49 +72,63 @@ impl From<json_parser::formats::atlas::AtlasTraceroute> for AtlasTraceroute {
             paris_id: atlas_traceroute.paris_id,
             prb_id: atlas_traceroute.prb_id,
             proto: atlas_traceroute.proto,
-            result: atlas_traceroute.result.into_iter().map(|hop| {
-                AtlasTracerouteHop {
+            result: atlas_traceroute
+                .result
+                .into_iter()
+                .map(|hop| AtlasTracerouteHop {
                     hop: hop.hop,
-                    result: hop.result.into_iter().map(|reply| {
-                        if reply.from.is_none() {
-                            AtlasTracerouteReply {
-                                from: Some("*".to_string()),
-                                rtt: None,
-                                size: None,
-                                ttl: None,
-                                icmpext: None,
+                    result: hop
+                        .result
+                        .into_iter()
+                        .map(|reply| {
+                            if reply.from.is_none() {
+                                AtlasTracerouteReply {
+                                    from: Some("*".to_string()),
+                                    rtt: None,
+                                    size: None,
+                                    ttl: None,
+                                    icmpext: None,
+                                }
+                            } else {
+                                AtlasTracerouteReply {
+                                    from: reply.from,
+                                    rtt: Some(reply.rtt),
+                                    size: Some(reply.size),
+                                    ttl: Some(reply.ttl),
+                                    icmpext: Some(
+                                        reply
+                                            .icmpext
+                                            .into_iter()
+                                            .map(|icmpext| AtlasIcmpExt {
+                                                version: icmpext.version,
+                                                rfc4884: icmpext.rfc4884,
+                                                obj: icmpext
+                                                    .obj
+                                                    .into_iter()
+                                                    .map(|obj| AtlasIcmpExtObj {
+                                                        class: obj.class,
+                                                        kind: obj.kind,
+                                                        mpls: obj
+                                                            .mpls
+                                                            .into_iter()
+                                                            .map(|mpls| AtlasIcmpExtMplsData {
+                                                                label: mpls.label,
+                                                                exp: mpls.exp,
+                                                                s: mpls.s,
+                                                                ttl: mpls.ttl,
+                                                            })
+                                                            .collect(),
+                                                    })
+                                                    .collect(),
+                                            })
+                                            .collect(),
+                                    ),
+                                }
                             }
-                        } else {
-                            AtlasTracerouteReply {
-                                from: reply.from,
-                                rtt: Some(reply.rtt),
-                                size: Some(reply.size),
-                                ttl: Some(reply.ttl),
-                                icmpext: Some(reply.icmpext.into_iter().map(|icmpext| {
-                                    AtlasIcmpExt {
-                                        version: icmpext.version,
-                                        rfc4884: icmpext.rfc4884,
-                                        obj: icmpext.obj.into_iter().map(|obj| {
-                                            AtlasIcmpExtObj {
-                                                class: obj.class,
-                                                kind: obj.kind,
-                                                mpls: obj.mpls.into_iter().map(|mpls| {
-                                                    AtlasIcmpExtMplsData {
-                                                        label: mpls.label,
-                                                        exp: mpls.exp,
-                                                        s: mpls.s,
-                                                        ttl: mpls.ttl,
-                                                    }
-                                                }).collect(),
-                                            }
-                                        }).collect(),
-                                    }
-                                }).collect()),
-                            }
-                        }
-                    }).collect(),
-                }
-            }).collect(),
+                        })
+                        .collect(),
+                })
+                .collect(),
             size: atlas_traceroute.size,
             src_addr: atlas_traceroute.src_addr,
             timestamp: atlas_traceroute.timestamp,
@@ -126,4 +136,3 @@ impl From<json_parser::formats::atlas::AtlasTraceroute> for AtlasTraceroute {
         }
     }
 }
-
