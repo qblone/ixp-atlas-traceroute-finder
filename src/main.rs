@@ -510,15 +510,13 @@ let from_country = match runtime.block_on(get_country_code(&from_addr.to_string(
 
 
 
-    let src_country = match src_addr {
-        Some(src_addr) => {
-            match runtime.block_on(get_country_code(&src_addr.to_string(), IpSource::IpInfo)) {
-                Ok(country) => country,
-                Err(_) => "--".to_string(),
-            }
-        }
-        None => "--".to_string(),
-    }; 
+
+
+let dst_country = match runtime.block_on(get_country_code(&dst_addr.to_string(), IpSource::IpInfo)) {
+    Ok(country) => country,
+    Err(_) => "--".to_string(),
+};
+
     
     
     //let src_country = runtime.block_on(get_country_code(&src_addr.ok_or("Failed to get source address")?.to_string(), IpSource::IpInfo))?;
@@ -586,7 +584,8 @@ let from_country = match runtime.block_on(get_country_code(&from_addr.to_string(
         "destination": {
             "ip_addr": dst_addr_result.ip_addr,
             "prefix": dst_addr_result.network,
-            "origin": dst_addr_result.origin
+            "origin": dst_addr_result.origin,
+            "dst_cc":dst_country 
         },
         "from": {
             "from" : from_addr
