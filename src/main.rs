@@ -198,7 +198,7 @@ async fn get_country_code_from_ipinfo(ip: &str) -> Result<String, reqwest::Error
 }
 
 async fn get_country_code(ip: &str, source: IpSource) -> Result<String, reqwest::Error> {
-    sleep(Duration::from_millis(100)).await; // Introducing a 100ms delay, hopefully won't get blacklisted
+   // sleep(Duration::from_millis(100)).await; // Introducing a 100ms delay, hopefully won't get blacklisted
 
     match source {
         IpSource::IpMap => get_country_code_from_ipmap(ip).await,
@@ -487,14 +487,14 @@ fn write_simplified_traceroute_to_json(
     }; */
 
     let from_country =
-        match runtime.block_on(get_country_code(&from_addr.to_string(), IpSource::IpInfo)) {
+        match runtime.block_on(get_country_code(&from_addr.to_string(), IpSource::IpMap)) {
             Ok(country) => country,
             Err(_) => "--".to_string(),
         };
 
     let src_country = match src_addr {
         Some(src_addr) => {
-            match runtime.block_on(get_country_code(&src_addr.to_string(), IpSource::IpInfo)) {
+            match runtime.block_on(get_country_code(&src_addr.to_string(), IpSource::IpMap)) {
                 Ok(country) => country,
                 Err(_) => "--".to_string(),
             }
@@ -503,7 +503,7 @@ fn write_simplified_traceroute_to_json(
     };
 
     let dst_country =
-        match runtime.block_on(get_country_code(&dst_addr.to_string(), IpSource::IpInfo)) {
+        match runtime.block_on(get_country_code(&dst_addr.to_string(), IpSource::IpMap)) {
             Ok(country) => country,
             Err(_) => "--".to_string(),
         };
@@ -521,7 +521,7 @@ fn write_simplified_traceroute_to_json(
                 Some(converted_ip) => {
                     match runtime.block_on(get_country_code(
                         &converted_ip.to_string(),
-                        IpSource::IpInfo,
+                        IpSource::IpMap,
                     )) {
                         Ok(country) => country,
                         Err(_) => "--".to_string(),
