@@ -63,7 +63,7 @@ struct Geolocation {
 
 #[derive(Debug, Deserialize)]
 struct Location {
-    country_code_alpha2: Option<String>,
+    countryCodeAlpha2: Option<String>, // Use the same field name as in the JSON
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,7 +86,7 @@ async fn get_country_code_from_ipmap(ip: &str) -> Result<String, reqwest::Error>
 
     Ok(response
         .location
-        .country_code_alpha2
+        .countryCodeAlpha2
         .unwrap_or("".to_string()))
 }
 
