@@ -56,12 +56,12 @@ struct Cli {
     add_cc: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct Geolocation {
     location: Location,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct Location {
     country_code_alpha2: Option<String>,
 }
@@ -82,6 +82,8 @@ enum IpSource {
 async fn get_country_code_from_ipmap(ip: &str) -> Result<String, reqwest::Error> {
     let ipmap_url = format!("https://ipmap-api.ripe.net/v1/locate/{}/best", ip);
     let response: Geolocation = reqwest::get(&ipmap_url).await?.json().await?;
+    println!("Response body: {:?}", response); // Debug print the response body
+
     Ok(response
         .location
         .country_code_alpha2
